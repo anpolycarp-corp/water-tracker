@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+    <title>Water Tracker</title>
+
+    <!-- Мобильный вид -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4A90E2">
+
+    <style>
+        :root{
+            --blue:#4A90E2;
+            --gray:#F5F6F8;
+            --dark:#2C3E50;
+        }
+        *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+        body{margin:0;background:var(--gray);display:flex;justify-content:center}
+        .app{
+            width:100%;
+            max-width:420px;
+            min-height:100vh;
+            background:#fff;
+            display:flex;
+            flex-direction:column;
+        }
+        header{
+            background:var(--blue);
+            color:#fff;
+            padding:18px 16px;
+            font-size:1.25rem;
+            text-align:center;
+        }
+        main{padding:24px;flex:1}
+        label{display:block;margin:18px 0 6px;font-weight:500;color:var(--dark)}
+        input{
+            width:100%;
+            padding:12px 14px;
+            border:1px solid #ccc;
+            border-radius:8px;
+            font-size:1rem;
+        }
+        button{
+            width:100%;
+            margin-top:14px;
+            padding:14px;
+            border:none;
+            border-radius:8px;
+            font-size:1rem;
+            color:#fff;
+            background:var(--blue);
+        }
+        button.danger{background:#d9534f}
+        p#result{margin-top:18px;font-size:1.1rem;font-weight:600}
+        .note{font-size:.8rem;color:#666;margin-top:4px}
+    </style>
+</head>
+<body>
+<div class="app">
+    <header>Water Tracker</header>
+
+    <main>
+        <!-- Расчёт воды -->
+        <label for="weight">Ваш вес (кг)</label>
+        <input id="weight" type="number" min="1" max="300" placeholder="Напр. 70">
+        <button id="calcBtn">Рассчитать норму</button>
+        <p id="result"></p>
+
+        <!-- Напоминания -->
+        <h3 style="margin-top:32px">Напоминания</h3>
+        <label for="interval">Интервал (мин.)</label>
+        <input id="interval" type="number" min="15" step="15" placeholder="Каждые 60">
+        <button id="startRem">Запустить</button>
+        <button id="stopRem" class="danger">Остановить</button>
+        <div class="note" id="status"></div>
+    </main>
+</div>
+
+<script>
+/* ========= utils ========= */
+const mlPerKg = 30;                         // 30 мл на 1 кг
+const $      = id => document.getElementById(id);
+
+/* ======= UI/state ======= */
+function loadState(){
+    const w = +localStorage.getItem('wt') || '';
+    const i = +localStorage.getItem('int')||'';
+    $('weight').value   = w;
+    $('interval').value = i;
+    if(w) showResult(w);
+    updateStatus();
+}
+
+function saveState(){
+    localStorage.setItem('wt', $('weight').value);
+    localStorage.setItem('int', $('interval').value);
+}
+
+/* ======= расчёт воды ======= */
+function showResult(w){
+    const needMl = w * mlPerKg;
+    $('result').textContent = `Вам следует выпивать ≈ ${(needMl/1000).toFixed(1)} л (${needMl} мл) воды в сутки`;
+}
+
+/* ======= напоминания ======= */
+let timerId = null;
+
+async function askPermission(){
+    if(Notification.permission === 'default'){
+        await Notification.requestPermission();
+    }
+    return Notification.permission === 'granted';
+}
+
+function startReminders(){
+    const intMin = +$('interval').value;
+    if(!intMin){
+        alert('Укажите интервал напоминаний');
+        return;
+    }
+    askPermission().then(ok=>{
+        if(!ok){alert('Разрешите уведомления, чтобы получать напоминания');return;}
+        clearInterval(timerId);
+        const intMs = intMin*60000;
+        timerId = setInterval(()=> notify(), intMs);
+        notify();                            // мгновенное первое уведомление
+        saveState();
+        updateStatus();
+    });
+}
+function stopReminders(){
+    clearInterval(timerId);
+    timerId = null;
+    updateStatus();
+}
+function notify(){
+    const txt = 'Пора сделать пару глотков воды 💧';
+    if(document.visibilityState==='visible'){
+        // если вкладка открыта ‒ лёгкий toast
+        console.log(txt);
+    }
+    new Notification('Water Tracker', {body:txt, icon:'icons/icon-192.png'});
+}
+function updateStatus(){
+    $('status').textContent = timerId ? 'Напоминания активны' : 'Напоминания выключены';
+}
+
+/* ======= события ======= */
+$('calcBtn').onclick = ()=>{
+    const w = +$('weight').value;
+    if(!w){alert('Введите вес');return;}
+    showResult(w); saveState();
+};
+$('startRem').onclick = startReminders;
+$('stopRem').onclick  = stopReminders;
+
+window.addEventListener('load', loadState);
+
+/* ======= PWA - sw ======= */
+if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js');
+}
+</script>
+</body>
+</html>
